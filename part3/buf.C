@@ -63,6 +63,14 @@ BufMgr::~BufMgr() {
 }
 
 
+/*
+Allocates a free frame using the clock algorithm; if necessary, writing a dirty page back to disk. Returns
+BUFFEREXCEEDED if all buffer frames are pinned, UNIXERR if the call to the I/O layer returned an
+error when a dirty page was being written to disk, and OK otherwise. This private method will get called
+by the readPage() and allocPage() methods described below.
+Make sure that if the buffer frame allocated has a valid page in it, you remove the appropriate entry from
+the hash table.
+*/
 const Status BufMgr::allocBuf(int & frame) 
 {
 
@@ -73,13 +81,39 @@ const Status BufMgr::allocBuf(int & frame)
 
 }
 
-	
+/*
+First check whether the page is already in the buffer pool by invoking the lookup() method on the
+hashtable to get a frame number. There are two cases to be handled depending on the outcome of the
+lookup() call:
+Case 1. The page is not in the buffer pool. Call allocBuf() to allocate a buffer frame and then call the
+method file->readPage() to read the page from the disk into the buffer pool frame. Next, insert the page
+into the hashtable. Finally, invoke Set() on the frame to set it up properly. Set() will leave the pinCnt for
+the page set to 1. Return a pointer to the frame containing the page via the page parameter.
+Case 2. The page is in the buffer pool. In this case set the appropriate refbit, increment the pinCnt for the
+page, and then return a pointer to the frame containing the page via the page parameter.
+Returns OK if no errors occurred, UNIXERR if a Unix error occurred, BUFFEREXCEEDED if all buffer
+frames are pinned, HASHTBLERROR if a hash table error occurred.
+*/	
 const Status BufMgr::readPage(File* file, const int PageNo, Page*& page)
-{
+{   
+    // case 1: page is not in buffer pool
+    int frameNo; 
+    if (!hashTable->lookup(file,PageNo,&page)){
+        allocBuf(frameNo); // allocate buffer frame
+        bufPool[frameNo] = file->readPage(PageNo,page); // read page from disk into the buffer pool frame
 
-
-
-
+        // insert page into hashtable 
+        hashTable->insert(file,PageNo,frameNo);
+        // invoke set() on the frame to set it up properly
+        bufTable[frameNo].Set(file,PageNo);
+    } else{ // case 2: page is in buffer pool
+        //page already in buffer, inc pincnt and set refbit
+        bufTable[frameNo].pinCnt++;
+        bufTable[frameNo].refbit= true;
+    }
+    page = &bufPool[frameNo]; // update where the page is (may or may not have changed)
+    // return a pointer to the frame containing the page via the page parameter.
+    return &page; // TODO: maybe change
 
 }
 
