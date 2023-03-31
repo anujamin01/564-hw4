@@ -74,7 +74,7 @@ the hash table.
 const Status BufMgr::allocBuf(int & frame) 
 {
 
-
+    
 
 
 
@@ -97,23 +97,31 @@ frames are pinned, HASHTBLERROR if a hash table error occurred.
 const Status BufMgr::readPage(File* file, const int PageNo, Page*& page)
 {   
     // case 1: page is not in buffer pool
-    int frameNo; 
-    if (!hashTable->lookup(file,PageNo,&page)){
-        allocBuf(frameNo); // allocate buffer frame
-        bufPool[frameNo] = file->readPage(PageNo,page); // read page from disk into the buffer pool frame
+        int frameNo; 
+        if (hashTable->lookup(file,PageNo,frameNo) == HASHNOTFOUND){
+            Status t = allocBuf(frameNo); // try to allocate buffer frame
+            if (t != OK){ 
+                return t; // some error must have occurred
+            }
 
-        // insert page into hashtable 
-        hashTable->insert(file,PageNo,frameNo);
-        // invoke set() on the frame to set it up properly
-        bufTable[frameNo].Set(file,PageNo);
-    } else{ // case 2: page is in buffer pool
-        //page already in buffer, inc pincnt and set refbit
-        bufTable[frameNo].pinCnt++;
-        bufTable[frameNo].refbit= true;
-    }
-    page = &bufPool[frameNo]; // update where the page is (may or may not have changed)
-    // return a pointer to the frame containing the page via the page parameter.
-    return &page; // TODO: maybe change
+            if(file->readPage(PageNo,page) != OK){ // try to read page from disk into the buffer pool frame
+                return UNIXERR;
+            }
+
+            // insert page into hashtable
+            if(hashTable->insert(file,PageNo,frameNo) == HASHTBLERROR){
+                return HASHTBLERROR; // error inserting page into the the table 
+            }
+            // invoke set() on the frame to set it up properly
+            bufTable[frameNo].Set(file,PageNo);
+        } else{ // case 2: page is in buffer pool
+            //page already in buffer, inc pincnt and set refbit
+            bufTable[frameNo].pinCnt++;
+            bufTable[frameNo].refbit= true;
+            page = &bufPool[frameNo]; // update where the page is (may or may not have changed)
+            // return a pointer to the frame containing the page via the page parameter.
+        }
+    return OK; // No errors occurred
 
 }
 
@@ -129,7 +137,7 @@ const Status BufMgr::unPinPage(File* file, const int PageNo,
     int frameNo;
 
     // if frame exists
-    if (hashTable->lookup(file,PageNo,&PageNo)){
+    if (hashTable->lookup(file,PageNo,frameNo)){
         // return error if page is not pinned 
         if (bufTable[PageNo].pinCnt <= 0){
             return PAGENOTPINNED; 
@@ -149,13 +157,7 @@ const Status BufMgr::unPinPage(File* file, const int PageNo,
 
 const Status BufMgr::allocPage(File* file, int& pageNo, Page*& page) 
 {
-
-
-
-
-
-
-
+    
 }
 
 const Status BufMgr::disposePage(File* file, const int pageNo) 
