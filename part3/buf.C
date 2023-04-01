@@ -153,9 +153,12 @@ const Status BufMgr::readPage(File *file, const int PageNo, Page *&page)
         {
             return t; // some error must have occurred
         }
+        // try to read page from disk into the buffer pool frame
 
-        if (file->readPage(PageNo, page) != OK)
-        { // try to read page from disk into the buffer pool frame
+        if (file->readPage(PageNo, &bufPool[frameNo]) != OK)
+        { 
+            // if the page is not valid, we get rid of it
+            disposePage(file, PageNo);
             return UNIXERR;
         }
 
@@ -166,6 +169,10 @@ const Status BufMgr::readPage(File *file, const int PageNo, Page *&page)
         }
         // invoke set() on the frame to set it up properly
         bufTable[frameNo].Set(file, PageNo);
+        // resetting the frame number
+        bufTable[frameNo].frameNo = frameNo;
+        // set page pointer
+        page = &bufPool[frameNo];
     }
     else
     { // case 2: page is in buffer pool
