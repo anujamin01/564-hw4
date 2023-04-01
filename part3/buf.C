@@ -199,8 +199,34 @@ const Status BufMgr::unPinPage(File *file, const int PageNo,
     return HASHNOTFOUND;
 }
 
+/*
+This call is kind of weird. The first step is to allocate an empty page in the specified file by invoking the
+file->allocatePage() method. This method will return the page number of the newly allocated page. Then
+allocBuf() is called to obtain a buffer pool frame. Next, an entry is inserted into the hash table and Set() is
+invoked on the frame to set it up properly. The method returns both the page number of the newly
+allocated page to the caller via the pageNo parameter and a pointer to the buffer frame allocated for the
+page via the page parameter. Returns OK if no errors occurred, UNIXERR if a Unix error occurred,
+BUFFEREXCEEDED if all buffer frames are pinned and HASHTBLERROR if a hash table error
+occurred.
+*/
 const Status BufMgr::allocPage(File *file, int &pageNo, Page *&page)
 {
+    int frameNo;
+    // pageNo is newly allocated
+    file->allocatePage(pageNo);
+    // call allocBuf to obtain a buffer pool frame
+    Status s = allocBuf(frameNo);
+    if (s != OK){
+        return s;
+    }
+    // insert page into hashtable
+    if (hashTable->insert(file, pageNo, frameNo) == HASHTBLERROR)
+    {
+        return HASHTBLERROR; // error inserting page into the the table
+    }
+    // invoke set() on the frame to set it up properly
+    bufTable[frameNo].Set(file, pageNo);
+    return OK;
 }
 
 const Status BufMgr::disposePage(File *file, const int pageNo)
