@@ -132,7 +132,7 @@ frames are pinned, HASHTBLERROR if a hash table error occurred.
 const Status BufMgr::readPage(File *file, const int PageNo, Page *&page)
 {
     // case 1: page is not in buffer pool
-    int frameNo;
+    int frameNo = 0;
     if (hashTable->lookup(file, PageNo, frameNo) == HASHNOTFOUND)
     {
         Status t = allocBuf(frameNo); // try to allocate buffer frame
@@ -173,30 +173,29 @@ PAGENOTPINNED if the pin count is already 0
 const Status BufMgr::unPinPage(File *file, const int PageNo,
                                const bool dirty)
 {
-    int frameNo;
+
+    int frameNo = 0;
 
     // if frame exists
-    if (hashTable->lookup(file, PageNo, frameNo))
+    if (hashTable->lookup(file, PageNo, frameNo) == OK)
     {
         // return error if page is not pinned
-        if (bufTable[PageNo].pinCnt <= 0)
+        if (bufTable[frameNo].pinCnt == 0)
         {
             return PAGENOTPINNED;
         }
-        else
+        // decrement pin count
+        bufTable[frameNo].pinCnt--;
+        // set diry bit
+        if (dirty)
         {
-            // decrement pin count
-            bufTable[frameNo].pinCnt--;
-            // set diry bit
-            if (dirty)
-            {
-                bufTable[frameNo].dirty = true;
-            }
-            return OK;
+            bufTable[frameNo].dirty = true;
         }
+        return OK;
     }
     // frame doesn't exist
     return HASHNOTFOUND;
+
 }
 
 /*
@@ -215,13 +214,15 @@ const Status BufMgr::allocPage(File *file, int &pageNo, Page *&page)
     int PageNo = 0;
     // pageNo is newly allocated
     Status t = file->allocatePage(PageNo);
-    if (t != OK){
+    if (t != OK)
+    {
         return t;
     }
     int frameNo = 0;
     // call allocBuf to obtain a buffer pool frame
     Status s = allocBuf(frameNo);
-    if (s != OK){
+    if (s != OK)
+    {
         return s;
     }
     // insert page into hashtable
@@ -229,7 +230,6 @@ const Status BufMgr::allocPage(File *file, int &pageNo, Page *&page)
     {
         return HASHTBLERROR; // error inserting page into the the table
     }
-
     // invoke set() on the frame to set it up properly
     bufTable[frameNo].Set(file, PageNo);
 
