@@ -80,10 +80,13 @@ const Status BufMgr::allocBuf(int &frame)
     // iterate through the clock algorithm twice and return bufferexceeded if all buffer frames are not available
     for (int i = 0; i < numBufs * 2; i++)
     {
-        this->advanceClock();
+        advanceClock();
         // if valid bit is false
         if (bufTable[clockHand].valid == false)
         {
+            // clear frame to initial status, and return frame and OK status
+            frame = bufTable[clockHand].frameNo;
+            bufTable[clockHand].Clear();
             return OK;
         }
         // if valid bit is true
@@ -106,11 +109,21 @@ const Status BufMgr::allocBuf(int &frame)
         {
             // we flush page to disk
             // if flushFile returns anything that is not OK, we return UNIXERR
-            if (flushFile(bufTable[clockHand].file) != OK)
+            if ((bufTable[clockHand].file->writePage(bufTable[clockHand].pageNo, &bufPool[clockHand])) != OK)
             {
                 return UNIXERR;
             }
+            bufTable[clockHand].dirty = false;
         }
+        // remove from hashtable
+        if (hashTable->remove(bufTable[clockHand].file, bufTable[clockHand].pageNo) != OK){
+            return HASHTBLERROR;
+        }
+        // now we are able to return an OK status
+        // clear frame to initial status, and return frame and OK status
+        bufTable[clockHand].Clear();
+        frame = bufTable[clockHand].frameNo;
+
         return OK;
     }
     return BUFFEREXCEEDED;
